@@ -3,7 +3,6 @@
 import argparse
 import torch
 
-import torch.nn as nn
 import torch.optim as optim
 
 import torch.nn.functional as F
@@ -11,20 +10,13 @@ from torch.autograd import Variable
 
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
-from torchvision.utils import save_image
 
 from torch.utils.data import DataLoader
 
 import os
-import sys
-import math
-
 import shutil
 
-import setproctitle
-
 import densenet
-import make_graph
 
 def main():
     parser = argparse.ArgumentParser()
@@ -35,11 +27,12 @@ def main():
     parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--opt', type=str, default='sgd',
                         choices=('sgd', 'adam', 'rmsprop'))
+    parser.add_argument('--dataset', type=str, default='cifar10',
+                        choices=('cifar10', 'svhn'))
     args = parser.parse_args()
 
     args.cuda = not args.no_cuda and torch.cuda.is_available()
     args.save = args.save or 'work/densenet.base'
-    setproctitle.setproctitle(args.save)
 
     torch.manual_seed(args.seed)
     if args.cuda:
@@ -49,8 +42,13 @@ def main():
         shutil.rmtree(args.save)
     os.makedirs(args.save, exist_ok=True)
 
+
     normMean = [0.49139968, 0.48215827, 0.44653124]
     normStd = [0.24703233, 0.24348505, 0.26158768]
+    if args.dataset == "svhn": # calculated using `compute_dataset_means_stds.py`
+        normMean = [ 0.43768218, 0.44376934, 0.47280428 ] 
+        normStd = [ 0.1980301, 0.2010157, 0.19703591 ]
+
     normTransform = transforms.Normalize(normMean, normStd)
 
     trainTransform = transforms.Compose([
@@ -64,14 +62,25 @@ def main():
         normTransform
     ])
 
+    train_dataset = None
+    test_dataset = None
+    if args.dataset == "svhn":
+        train_dataset = dset.SVHN(root='svhn', split='train', download=True,
+                    transform=trainTransform)
+        test_dataset = dset.SVHN(root='svhn', split='test', download=True,
+                    transform=testTransform)
+    else: #cifar10
+        train_dataset = dset.CIFAR10(root='cifar', train=True, download=True,
+                     transform=trainTransform)
+        test_dataset = dset.CIFAR10(root='cifar', train=False, download=True,
+                     transform=testTransform)
+
     kwargs = {'num_workers': 1, 'pin_memory': True} if args.cuda else {}
     trainLoader = DataLoader(
-        dset.CIFAR10(root='cifar', train=True, download=True,
-                     transform=trainTransform),
+        train_dataset,
         batch_size=args.batchSz, shuffle=True, **kwargs)
     testLoader = DataLoader(
-        dset.CIFAR10(root='cifar', train=False, download=True,
-                     transform=testTransform),
+        test_dataset,
         batch_size=args.batchSz, shuffle=False, **kwargs)
 
     net = densenet.DenseNet(growthRate=12, depth=100, reduction=0.5,
@@ -124,9 +133,9 @@ def train(args, epoch, net, trainLoader, optimizer, trainF):
         partialEpoch = epoch + batch_idx / len(trainLoader) - 1
         print('Train Epoch: {:.2f} [{}/{} ({:.0f}%)]\tLoss: {:.6f}\tError: {:.6f}'.format(
             partialEpoch, nProcessed, nTrain, 100. * batch_idx / len(trainLoader),
-            loss.data[0], err))
+            loss.data.item(), err))
 
-        trainF.write('{},{},{}\n'.format(partialEpoch, loss.data[0], err))
+        trainF.write('{},{},{}\n'.format(partialEpoch, loss.data.item(), err))
         trainF.flush()
 
 def test(args, epoch, net, testLoader, optimizer, testF):
