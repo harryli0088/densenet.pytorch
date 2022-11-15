@@ -52,7 +52,7 @@ def main():
     normTransform = transforms.Normalize(normMean, normStd)
 
     trainTransform = transforms.Compose([
-        transforms.RandomCrop(32, padding=4),
+        # transforms.RandomCrop(32, padding=4),
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         normTransform
