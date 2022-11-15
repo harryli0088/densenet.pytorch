@@ -147,7 +147,7 @@ def test(args, epoch, net, testLoader, optimizer, testF):
             data, target = data.cuda(), target.cuda()
         data, target = Variable(data, volatile=True), Variable(target)
         output = net(data)
-        test_loss += F.nll_loss(output, target).data[0]
+        test_loss += F.nll_loss(output, target).data.item()
         pred = output.data.max(1)[1] # get the index of the max log-probability
         incorrect += pred.ne(target.data).cpu().sum()
 
